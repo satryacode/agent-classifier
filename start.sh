@@ -18,7 +18,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CLASSIFIER_DIR="$SCRIPT_DIR"
+CLASSIFIER_DIR="${CLASSIFIER_DIR:-$HOME/agent-classifier}"
 DUMMY_BE_DIR="${DUMMY_BE_DIR:-$HOME/nexth-dummy-be}"
 
 # ── DB connection (matches dummy-be .env defaults) ────────────
