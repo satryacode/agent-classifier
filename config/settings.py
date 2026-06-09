@@ -116,6 +116,10 @@ class ClassifierConfig(BaseSettings):
     output_buffer_size: int = 1000
     output_retry_interval_seconds: int = 5
 
+    # Ingestion source
+    log_source: str = "file"  # "file" or "cloudwatch"
+    log_file_path: str = "logs/requests.jsonl"
+
     # Config file path
     config_file: str | None = None
 
