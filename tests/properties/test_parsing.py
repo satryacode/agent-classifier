@@ -45,3 +45,19 @@ def test_property_2b_missing_field_returns_none(d, missing_field):
     d.pop(missing_field)
     result = parse_entry(json.dumps(d))
     assert result is None
+
+
+# Feature: traffic-fraud-classifier, Property 3: Chronological ordering
+import json as _json
+from ingestion.file_ingestor import sort_entries_chronologically
+from tests.conftest import valid_log_entry_dicts
+
+
+@given(st.lists(valid_log_entry_dicts, min_size=0, max_size=20))
+@settings(max_examples=100)
+def test_property_3_chronological_ordering(dicts):
+    """After sorting, timestamps are non-decreasing and sort is stable."""
+    entries = [e for d in dicts if (e := parse_entry(_json.dumps(d))) is not None]
+    sorted_entries = sort_entries_chronologically(entries)
+    for i in range(len(sorted_entries) - 1):
+        assert sorted_entries[i].timestamp <= sorted_entries[i + 1].timestamp
