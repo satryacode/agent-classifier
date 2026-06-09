@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "agent-classifier"
 version = "0.1.0"
 description = "Traffic fraud classifier for CloudWatch log analysis"
-requires-python = ">=3.11"
+requires-python = ">=3.9"
 dependencies = [
     "boto3>=1.34.0",
     "pydantic-settings>=2.1.0",
