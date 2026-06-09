@@ -11,14 +11,20 @@ class TrafficProfiler:
         self.user = UserProfileManager()
         self.endpoint = EndpointProfileManager(rate_abuse_threshold)
         self._ip_successful_logins: dict[str, list] = {}
+        self._ip_failed_logins: dict[str, int] = {}
+        self._ip_total_logins: dict[str, int] = {}
 
     def update(self, entry: LogEntry) -> ProfileContext:
         self.ip.update(entry)
         self.user.update(entry)
         self.endpoint.update(entry)
 
-        if entry.path == "/login" and entry.status == 200:
-            self._ip_successful_logins.setdefault(entry.ip, []).append(entry.timestamp)
+        if entry.path == "/login":
+            self._ip_total_logins[entry.ip] = self._ip_total_logins.get(entry.ip, 0) + 1
+            if entry.status == 401:
+                self._ip_failed_logins[entry.ip] = self._ip_failed_logins.get(entry.ip, 0) + 1
+            elif entry.status == 200:
+                self._ip_successful_logins.setdefault(entry.ip, []).append(entry.timestamp)
 
         return self._build_context(entry)
 
@@ -37,6 +43,8 @@ class TrafficProfiler:
             ctx.ip_suspicious_reason = ip_p.suspicious_reason
             ctx.ip_distinct_users = self._get_ip_users(entry.ip)
             ctx.ip_successful_logins = self._get_ip_successful_logins(entry.ip)
+            ctx.ip_failed_logins = self._ip_failed_logins.get(entry.ip, 0)
+            ctx.ip_total_logins = self._ip_total_logins.get(entry.ip, 0)
         if user_p:
             ctx.username = username
             ctx.user_failed_logins = user_p.failed_login_count
@@ -65,6 +73,8 @@ class TrafficProfiler:
         self.user.reset_window()
         self.endpoint.reset_window()
         self._ip_successful_logins.clear()
+        self._ip_failed_logins.clear()
+        self._ip_total_logins.clear()
 
     def get_ip_profiles(self):
         return self.ip
