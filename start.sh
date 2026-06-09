@@ -7,7 +7,7 @@
 #   - PostgreSQL running on 127.0.0.1:5432
 #   - .env file at ~/nexth-dummy-be/.env (or set DB_* vars below)
 #   - Docker installed (for dummy-be)
-#   - Python 3.11+ with agent-classifier deps installed
+#   - Python 3.11+ with pip available (deps installed automatically)
 #
 # Usage:
 #   chmod +x start.sh
@@ -90,6 +90,9 @@ start_classifier() {
   touch "$LOG_FILE"
 
   cd "$CLASSIFIER_DIR"
+  info "Installing agent-classifier dependencies..."
+  pip3 install -e . -q 2>/dev/null || pip install -e . -q
+
   DB_HOST="$DB_HOST" \
   DB_PORT="$DB_PORT" \
   DB_NAME="$DB_NAME" \
