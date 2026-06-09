@@ -18,8 +18,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DUMMY_BE_DIR="$SCRIPT_DIR/dummy-be"
-CLASSIFIER_DIR="$SCRIPT_DIR/agent-classifier"
+CLASSIFIER_DIR="$SCRIPT_DIR"
+DUMMY_BE_DIR="${DUMMY_BE_DIR:-$HOME/nexth-dummy-be}"
 
 # ── DB connection (matches dummy-be .env defaults) ────────────
 DB_HOST="${DB_HOST:-127.0.0.1}"
@@ -88,6 +88,7 @@ start_classifier() {
   mkdir -p "$(dirname "$LOG_FILE")"
   touch "$LOG_FILE"
 
+  cd "$CLASSIFIER_DIR"
   DB_HOST="$DB_HOST" \
   DB_PORT="$DB_PORT" \
   DB_NAME="$DB_NAME" \
