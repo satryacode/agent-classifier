@@ -11,9 +11,10 @@
 #
 # Usage:
 #   chmod +x start.sh
-#   ./start.sh              # start everything
-#   ./start.sh --schema     # only apply DB schema
-#   ./start.sh --demo       # fire demo requests after startup
+#   ./start.sh                   # start everything
+#   ./start.sh --schema          # only apply DB schema
+#   ./start.sh --demo            # fire demo requests after startup
+#   ./start.sh --classifier-only # skip dummy-be, run classifier only
 # ─────────────────────────────────────────────────────────────
 set -euo pipefail
 
@@ -135,6 +136,15 @@ case "${1:-}" in
     ;;
   --demo)
     fire_demo_requests
+    ;;
+  --classifier-only)
+    apply_schema
+    start_classifier
+    info ""
+    info "Classifier running. Ctrl+C to stop."
+    info "  verdicts DB: fraud_verdicts table"
+    info ""
+    wait $CLASSIFIER_PID 2>/dev/null || true
     ;;
   *)
     apply_schema
