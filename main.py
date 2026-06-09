@@ -13,6 +13,7 @@ from classifiers.brute_force_detector import BruteForceDetector
 from classifiers.auth_abuse_detector import AuthAbuseDetector
 from classifiers.recon_detector import ReconnaissanceDetector
 from output.writer import OutputWriter
+from output.db_writer import DBWriter
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,7 @@ def run(config: ClassifierConfig) -> None:
         config,
     )
     writer = OutputWriter(config)
+    db_writer = DBWriter()
     ingestor = FileIngestor(config.log_file_path, poll_interval=config.poll_interval_seconds)
 
     window_start = datetime.now(tz=timezone.utc)
@@ -55,6 +57,8 @@ def run(config: ClassifierConfig) -> None:
             context = profiler.update(entry)
             verdict = engine.classify(entry, context)
             writer.write_verdict(verdict)
+            if verdict.classification == "FRAUDULENT":
+                db_writer.insert_verdict(verdict)
             for flag in writer.maybe_create_flag(verdict):
                 logger.info("FraudFlag: ip=%s reason=%s confidence=%.2f",
                             flag.ip, flag.reason, flag.confidence_score)
@@ -62,4 +66,5 @@ def run(config: ClassifierConfig) -> None:
         time.sleep(config.poll_interval_seconds)
 
     writer.close()
+    db_writer.close()
     logger.info("Pipeline stopped.")
