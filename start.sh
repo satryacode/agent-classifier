@@ -91,7 +91,7 @@ start_classifier() {
 
   cd "$CLASSIFIER_DIR"
   info "Installing agent-classifier dependencies..."
-  pip3 install -e . -q 2>/dev/null || pip install -e . -q
+  python3 -m pip install -e . -q
 
   DB_HOST="$DB_HOST" \
   DB_PORT="$DB_PORT" \
