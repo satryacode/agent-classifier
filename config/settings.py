@@ -13,7 +13,7 @@ from __future__ import annotations
 import logging
 import warnings
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Dict, Optional, Tuple, Union
 
 import yaml
 from pydantic import model_validator
@@ -22,7 +22,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 logger = logging.getLogger(__name__)
 
 # Valid ranges for configurable parameters
-_VALID_RANGES: dict[str, tuple[float, float]] = {
+_VALID_RANGES: Dict[str, Tuple[float, float]] = {
     "time_window_seconds": (1, 3600),
     "brute_force_ip_threshold": (1, 10000),
     "brute_force_user_threshold": (1, 10000),
@@ -31,7 +31,7 @@ _VALID_RANGES: dict[str, tuple[float, float]] = {
 }
 
 # Default values for parameters that have range validation
-_DEFAULTS: dict[str, int | float] = {
+_DEFAULTS: Dict[str, Union[int, float]] = {
     "time_window_seconds": 300,
     "brute_force_ip_threshold": 10,
     "brute_force_user_threshold": 5,
@@ -40,7 +40,7 @@ _DEFAULTS: dict[str, int | float] = {
 }
 
 
-def _load_yaml_config(config_file: str | None) -> dict[str, Any]:
+def _load_yaml_config(config_file: Optional[str]) -> Dict[str, Any]:
     """Load and return YAML config file contents.
 
     Returns empty dict on any error (file not found, unreadable, malformed YAML).
@@ -121,11 +121,11 @@ class ClassifierConfig(BaseSettings):
     log_file_path: str = "logs/requests.jsonl"
 
     # Config file path
-    config_file: str | None = None
+    config_file: Optional[str] = None
 
     # Class-level constant (not a settings field)
-    _valid_ranges: ClassVar[dict[str, tuple[float, float]]] = _VALID_RANGES
-    _defaults: ClassVar[dict[str, int | float]] = _DEFAULTS
+    _valid_ranges: ClassVar[Dict[str, Tuple[float, float]]] = _VALID_RANGES
+    _defaults: ClassVar[Dict[str, Union[int, float]]] = _DEFAULTS
 
     def __init__(self, **kwargs: Any) -> None:
         """Initialize config with YAML file support.
