@@ -1,14 +1,17 @@
 # agent-classifier
 
-Traffic fraud classification pipeline for [dummy-be](https://github.com/satryacode/nexth-dummy-be). Tails the backend's request log, profiles traffic, detects fraud patterns, and persists verdicts to PostgreSQL.
+Traffic fraud classification pipeline for [dummy-be](https://github.com/satryacode/nexth-dummy-be). Bridges dummy-be container logs, profiles traffic per IP/user/endpoint, classifies each request, and persists `FRAUDULENT` verdicts to PostgreSQL for review by an agent-analyzer.
 
 ## How It Works
 
 ```
-dummy-be logs/requests.jsonl
+dummy-be container stdout
+        │  (docker logs -f bridge → host file)
+        ▼
+  logs/requests.jsonl  (JSON Lines, one entry per request)
         │
         ▼
-  FileIngestor (tail)
+  FileIngestor (tail + poll)
         │
         ▼
   TrafficProfiler
@@ -18,33 +21,58 @@ dummy-be logs/requests.jsonl
         │
         ▼
   ClassificationEngine
-  ├── SQLInjectionDetector   — pattern match on /login, /register bodies
-  ├── BruteForceDetector     — IP/user failed login thresholds
+  ├── SQLInjectionDetector   — regex pattern match on /login, /register bodies
+  ├── BruteForceDetector     — IP/user failed login threshold checks
   ├── AuthAbuseDetector      — unusual UA, token manipulation, forged token
   └── ReconnaissanceDetector — path diversity, path enumeration, scanner UA
         │
         ▼
-  OutputWriter  →  stdout (JSON Lines)
-  DBWriter      →  PostgreSQL fraud_verdicts table (remediated=0)
+  OutputWriter  →  stdout (JSON Lines verdict per request)
+  DBWriter      →  PostgreSQL fraud_verdicts (remediated=0, pending review)
 ```
 
 ## Prerequisites
 
-- Python 3.11+
+- Python 3.9+
 - PostgreSQL (same instance as dummy-be)
-- dummy-be running and writing to `logs/requests.jsonl`
+- dummy-be running as a Docker container named `dummy-be`
 
-## Setup
+## Quickstart (recommended)
+
+Use `start.sh` from the repo root — it handles everything:
+
+```bash
+# Full startup: schema + dummy-be + classifier
+./start.sh
+
+# Classifier only (dummy-be already running)
+./start.sh --classifier-only
+
+# Schema only
+./start.sh --schema
+
+# Fire demo attack requests
+./start.sh --demo
+```
+
+`start.sh` automatically:
+- Reads `DB_PASS` from `~/nexth-dummy-be/.env`
+- Bridges `docker logs -f dummy-be` → `logs/requests.jsonl`
+- Installs Python dependencies via `pip`
+- Passes `CLASSIFIER_LOG_FILE_PATH` to the classifier
+
+## Manual Setup
 
 ### 1. Install dependencies
 
 ```bash
-pip install -e ".[dev]"
+cd ~/agent-classifier
+python3 -m pip install -e .
 ```
 
 ### 2. Configure environment
 
-The classifier reads DB connection from the same env vars as dummy-be:
+DB connection (same vars as dummy-be):
 
 ```env
 DB_HOST=127.0.0.1
@@ -54,17 +82,23 @@ DB_USER=myapp_user
 DB_PASS=your_password
 ```
 
-Optional classifier config (all have defaults):
+Log file path (where docker logs bridge writes):
 
 ```env
-CLASSIFIER_TIME_WINDOW_SECONDS=300       # rolling window for profiling
-CLASSIFIER_BRUTE_FORCE_IP_THRESHOLD=10   # failed logins per IP before flagging
-CLASSIFIER_BRUTE_FORCE_USER_THRESHOLD=5  # failed logins per user before flagging
-CLASSIFIER_RATE_ABUSE_THRESHOLD=50       # requests per IP per endpoint
+CLASSIFIER_LOG_FILE_PATH=/home/ssm-user/nexth-dummy-be/logs/requests.jsonl
+```
+
+Optional tuning (all have defaults):
+
+```env
+CLASSIFIER_TIME_WINDOW_SECONDS=300
+CLASSIFIER_BRUTE_FORCE_IP_THRESHOLD=10
+CLASSIFIER_BRUTE_FORCE_USER_THRESHOLD=5
+CLASSIFIER_RATE_ABUSE_THRESHOLD=50
 CLASSIFIER_FRAUD_FLAG_CONFIDENCE_THRESHOLD=0.7
 ```
 
-Or pass a YAML config file:
+Or use a YAML config file:
 
 ```yaml
 # config.yaml
@@ -74,21 +108,31 @@ fraud_flag_confidence_threshold: 0.7
 ```
 
 ```bash
-python3 -m agent_classifier --config config.yaml
+python3 __main__.py --config config.yaml
 ```
 
 ### 3. Apply DB schema (first run only)
 
 ```bash
-psql -h 127.0.0.1 -U myapp_user -d myapp_db -f ../dummy-be/db/schema.sql
+PGPASSWORD=your_password psql -h 127.0.0.1 -U myapp_user -d myapp_db \
+  -f ~/nexth-dummy-be/db/schema.sql
 ```
 
-This creates the `fraud_verdicts` table and adds the `blocked` column to `users`.
+Creates `fraud_verdicts` table and adds `blocked` column to `users`.
 
-### 4. Run
+### 4. Bridge logs + run
 
 ```bash
-DB_HOST=127.0.0.1 DB_PASS=your_password python3 -m agent_classifier
+# Bridge docker logs to a file
+mkdir -p ~/nexth-dummy-be/logs
+sudo docker logs -f --tail 0 dummy-be 2>/dev/null \
+  >> ~/nexth-dummy-be/logs/requests.jsonl &
+
+# Start classifier
+cd ~/agent-classifier
+DB_HOST=127.0.0.1 DB_PASS=your_password \
+CLASSIFIER_LOG_FILE_PATH=~/nexth-dummy-be/logs/requests.jsonl \
+  python3 __main__.py
 ```
 
 ## Endpoints Monitored
@@ -118,27 +162,28 @@ Each request produces a JSON Lines verdict on stdout:
 }
 ```
 
-`classification` is always `LEGITIMATE` or `FRAUDULENT`.
+`classification` is always `LEGITIMATE` or `FRAUDULENT`. Only `FRAUDULENT` verdicts are written to the DB.
 
 ## DB Schema
 
 ```sql
--- fraud verdicts (written by this service)
+-- Fraud verdicts written by this service (remediated=0 = pending agent-analyzer review)
 fraud_verdicts (
     id, source_ip, user_identity, method, path,
     confidence_score, reason, original_log_entry_reference,
-    detected_at,        -- auto
-    remediated          -- 0 = unreviewed, 1 = confirmed by agent-analyzer
+    detected_at,   -- auto-set on insert
+    remediated     -- 0 = unreviewed, 1 = confirmed by agent-analyzer
 )
 
--- users (updated by agent-analyzer after review)
-users.blocked           -- 0 = active, 1 = blocked
+-- users.blocked set by agent-analyzer after verdict review
+-- blocked=1 → dummy-be returns 403 Forbidden on login
+users.blocked SMALLINT DEFAULT 0
 ```
 
-Query all unreviewed verdicts:
+Query unreviewed verdicts:
 
 ```bash
-psql -h 127.0.0.1 -U myapp_user -d myapp_db \
+PGPASSWORD=your_password psql -h 127.0.0.1 -U myapp_user -d myapp_db \
   -c "SELECT source_ip, reason, confidence_score, detected_at FROM fraud_verdicts WHERE remediated=0;"
 ```
 
@@ -148,7 +193,7 @@ psql -h 127.0.0.1 -U myapp_user -d myapp_db \
 # All tests (79)
 python3 -m pytest -v
 
-# Property tests only (35)
+# Property tests only (35 — Hypothesis-based)
 python3 -m pytest tests/properties/ -v
 
 # Integration tests only
@@ -160,7 +205,7 @@ python3 -m pytest tests/integration/ -v
 ```
 agent-classifier/
 ├── config/
-│   └── settings.py          # pydantic-settings config with CLASSIFIER_ prefix
+│   └── settings.py          # pydantic-settings config (CLASSIFIER_ prefix)
 ├── ingestion/
 │   ├── parser.py             # parse JSON log lines → LogEntry
 │   └── file_ingestor.py      # tail log file, incremental polling
@@ -177,9 +222,10 @@ agent-classifier/
 │   ├── recon_detector.py
 │   └── engine.py             # ClassificationEngine
 ├── output/
-│   ├── writer.py             # JSON Lines to stdout/file
+│   ├── writer.py             # JSON Lines to stdout
 │   └── db_writer.py          # INSERT to fraud_verdicts
 ├── models.py                 # LogEntry, Verdict, ProfileContext, FraudFlag
 ├── main.py                   # pipeline loop
-└── __main__.py               # CLI entry point
+├── __main__.py               # CLI entry point (run with: python3 __main__.py)
+└── start.sh                  # full-system startup script
 ```
