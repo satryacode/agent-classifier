@@ -14,6 +14,7 @@ from classifiers.auth_abuse_detector import AuthAbuseDetector
 from classifiers.recon_detector import ReconnaissanceDetector
 from output.writer import OutputWriter
 from output.db_writer import DBWriter
+from ingestion.ip_reputation import IpReputation
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +32,12 @@ def run(config: ClassifierConfig) -> None:
     )
     writer = OutputWriter(config)
     db_writer = DBWriter()
-    ingestor = FileIngestor(config.log_file_path, poll_interval=config.poll_interval_seconds)
+    reputation = IpReputation()
+    ingestor = FileIngestor(
+        config.log_file_path,
+        poll_interval=config.poll_interval_seconds,
+        tail_from_end=True,
+    )
 
     window_start = datetime.now(tz=timezone.utc)
     running = True
@@ -55,7 +61,8 @@ def run(config: ClassifierConfig) -> None:
         entries = ingestor.poll()
         for entry in entries:
             context = profiler.update(entry)
-            verdict = engine.classify(entry, context)
+            rep = reputation.lookup(entry.ip)
+            verdict = engine.classify(entry, context, reputation=rep)
             writer.write_verdict(verdict)
             if verdict.classification == "FRAUDULENT":
                 db_writer.insert_verdict(verdict)
@@ -67,4 +74,5 @@ def run(config: ClassifierConfig) -> None:
 
     writer.close()
     db_writer.close()
+    reputation.close()
     logger.info("Pipeline stopped.")
