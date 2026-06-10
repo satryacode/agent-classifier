@@ -54,13 +54,26 @@ def test_property_18_token_manipulation(n_users):
     assert any(r.reason == "token_manipulation" and r.confidence == 0.9 for r in results)
 
 
-def test_property_19_forged_token_no_prior_login():
-    """Successful /home with no prior successful login → forged_token."""
+def test_property_19_forged_token_attempted_but_never_succeeded():
+    """Successful /home from an IP that attempted auth but never logged in
+    successfully → forged_token."""
     ctx = ProfileContext(ip="1.2.3.4")
-    ctx.ip_successful_logins = []  # no logins
+    ctx.ip_total_logins = 3        # the IP has tried to authenticate
+    ctx.ip_successful_logins = []  # but never succeeded
     entry = _home_entry("Mozilla/5.0", status=200)
     results = detector.evaluate(entry, ctx)
     assert any(r.reason == "forged_token" and r.confidence == 0.85 for r in results)
+
+
+def test_property_19_anonymous_visitor_not_flagged():
+    """Successful /home from an IP that never attempted auth is an anonymous
+    visitor, not a forged token."""
+    ctx = ProfileContext(ip="1.2.3.4")
+    ctx.ip_total_logins = 0        # never tried to log in
+    ctx.ip_successful_logins = []
+    entry = _home_entry("Mozilla/5.0", status=200)
+    results = detector.evaluate(entry, ctx)
+    assert not any(r.reason == "forged_token" for r in results)
 
 
 def test_property_19_recent_login_no_forged_token():

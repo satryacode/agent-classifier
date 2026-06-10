@@ -30,8 +30,10 @@ class AuthAbuseDetector(BaseDetector):
                 is_fraudulent=True, reason="token_manipulation", confidence=0.9
             ))
 
-        # Forged token: successful /home with no recent successful login
-        if entry.status == 200:
+        # Forged token: successful /home with no recent successful login,
+        # but only when the IP has previously attempted authentication.
+        # IPs that have never tried to log in are anonymous visitors, not attackers.
+        if entry.status == 200 and context.ip_total_logins > 0:
             window_start = entry.timestamp - FORGED_TOKEN_WINDOW
             recent_logins = [
                 t for t in context.ip_successful_logins
