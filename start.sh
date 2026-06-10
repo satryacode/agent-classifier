@@ -94,16 +94,16 @@ start_classifier() {
   info "Classifier dir: $CLASSIFIER_DIR"
   info "Installing agent-classifier dependencies..."
   python3 -m pip install -e . -q
-  info "Install complete. Verifying module..."
-  python3 -c "import agent_classifier; print('  module OK:', agent_classifier.__file__)" \
-    || { error "Module not importable after install — check pip output above"; exit 1; }
+  info "Install complete. Verifying dependencies..."
+  python3 -c "from config.settings import ClassifierConfig; print('  deps OK')" \
+    || { error "Dependencies not importable after install"; exit 1; }
 
   DB_HOST="$DB_HOST" \
   DB_PORT="$DB_PORT" \
   DB_NAME="$DB_NAME" \
   DB_USER="$DB_USER" \
   DB_PASS="$DB_PASS" \
-    python3 -m agent_classifier &
+    python3 __main__.py &
 
   CLASSIFIER_PID=$!
   info "agent-classifier started (PID $CLASSIFIER_PID)"
