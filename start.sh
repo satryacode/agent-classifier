@@ -89,9 +89,26 @@ start_classifier() {
   mkdir -p "$(dirname "$LOG_FILE")"
   touch "$LOG_FILE"
 
+  # Source .env for DB_PASS if not already set
+  if [ -z "$DB_PASS" ] && [ -f "$DUMMY_BE_DIR/.env" ]; then
+    info "Loading DB_PASS from $DUMMY_BE_DIR/.env"
+    DB_PASS="$(grep -E '^DB_PASS=' "$DUMMY_BE_DIR/.env" | cut -d= -f2-)"
+  fi
+
+  # Bridge Docker container stdout → log file so the classifier can tail it.
+  # The container writes logs to /root/logs/ inside Docker (no volume mount),
+  # so we stream them out via docker logs.
+  if sudo docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^${CONTAINER}$"; then
+    info "Bridging docker logs ($CONTAINER) → $LOG_FILE"
+    sudo docker logs -f --tail 0 "$CONTAINER" 2>/dev/null >> "$LOG_FILE" &
+  else
+    warn "Container '$CONTAINER' is not running — classifier will tail $LOG_FILE directly"
+  fi
+
   cd "$CLASSIFIER_DIR"
   info "Python: $(which python3) — $(python3 --version 2>&1)"
   info "Classifier dir: $CLASSIFIER_DIR"
+  info "Log file: $LOG_FILE"
   info "Installing agent-classifier dependencies..."
   python3 -m pip install -e . -q
   info "Install complete. Verifying dependencies..."
@@ -103,6 +120,7 @@ start_classifier() {
   DB_NAME="$DB_NAME" \
   DB_USER="$DB_USER" \
   DB_PASS="$DB_PASS" \
+  CLASSIFIER_LOG_FILE_PATH="$LOG_FILE" \
     python3 __main__.py &
 
   CLASSIFIER_PID=$!
