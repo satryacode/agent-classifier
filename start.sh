@@ -90,8 +90,13 @@ start_classifier() {
   touch "$LOG_FILE"
 
   cd "$CLASSIFIER_DIR"
+  info "Python: $(which python3) — $(python3 --version 2>&1)"
+  info "Classifier dir: $CLASSIFIER_DIR"
   info "Installing agent-classifier dependencies..."
   python3 -m pip install -e . -q
+  info "Install complete. Verifying module..."
+  python3 -c "import agent_classifier; print('  module OK:', agent_classifier.__file__)" \
+    || { error "Module not importable after install — check pip output above"; exit 1; }
 
   DB_HOST="$DB_HOST" \
   DB_PORT="$DB_PORT" \
